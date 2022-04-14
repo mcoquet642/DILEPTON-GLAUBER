@@ -94,7 +94,7 @@ int main(int argc, char **argv) {
     Konfig CommandlineArguments(argc,argv);
     
     // SET COLLISION SYSTEM AND KINETMATICS //
-    int A1=208; int A2=208; double SqrtSNN=2760; double yRap=0.0; double EtaOverS=0.16;
+    int A1=208; int A2=208; double SqrtSNN=5020; double yRap=0.0; double EtaOverS=0.16;
     
     CommandlineArguments.Getval("A1",A1);
     CommandlineArguments.Getval("A2",A2);
@@ -175,7 +175,10 @@ int main(int argc, char **argv) {
     HydroAttractor::Setup();
     
     // DILEPTON KINEMATICS //
-    double qTMin=0.001; double qTMax=10.0; double TauMin=0.0; double TauMax=40.0;
+    double qTMin=0.001; double qTMax=10.0; double TauMin=0.0; double TauMax=10.0;
+    CommandlineArguments.Getval("qTMin",qTMin);
+    CommandlineArguments.Getval("qTMax",qTMax);
+
     
     // DILEPTON RATES //
     double dNlldQdY=0.0; double dNlldQdYPreEq=0.0; double dNlldQdYHydro=0.0;
@@ -192,13 +195,20 @@ int main(int argc, char **argv) {
     int NQ=15;
     CommandlineArguments.Getval("NQ",NQ);
 
+    int NqT=10;
+    CommandlineArguments.Getval("NqT",NqT);
+
     std::string fn = "ID" + std::to_string(EventID) + ".txt";
     std::ofstream OutStream; OutStream.open(fn.c_str());
+
+    int doQt=0;
+    CommandlineArguments.Getval("doQt",doQt);
 
     
     std::cerr << "#CALCULATING DILEPTON PRODUCTION FOR A1=" << A1 << ", A2=" << A2 << ", AT SQRT(SNN)=" << SqrtSNN << ", y=" << yRap << " AND Eta/s=" << EtaOverS << std::endl;
     std::cerr << "#KINEMATIC CUTS ARE qT=" << qTMin << " - " << qTMax << " AND  tau=" << TauMin << "-" << TauMax << " fm" << std::endl;
-    
+   if (!doQt){
+ 
     for(int iQ=0;iQ<NQ;iQ++){
         
         double Q=QMin+iQ*(QMax-QMin)/double(NQ-1);
@@ -216,7 +226,62 @@ int main(int argc, char **argv) {
         dNlldQdYHydro/=double(NSamples);
         
         OutStream << Q << " " << dNlldQdY << " " << dNlldQdYPreEq << " " << dNlldQdYHydro << std::endl;
+        cout << Q << " " << dNlldQdY << " " << dNlldQdYPreEq << " " << dNlldQdYHydro << std::endl;
     }
+
+    }else{
+
+        double dNlldQdY[NQ*NqT];
+        double dNlldQdYPreEq[NQ*NqT];
+        double dNlldQdYHydro[NQ*NqT];
+
+                for(int ib=0;ib<NQ*NqT;ib++){
+                    dNlldQdY[ib]=0.0; dNlldQdYPreEq[ib]=0.0;dNlldQdYHydro[ib]=0.0;
+                }
+
+            for(int iQ=0;iQ<NQ;iQ++){
+                double Q=QMin+(QMax-QMin)*iQ/(NQ-1);
+                for(int iqT=0;iqT<NqT;iqT++){
+                    double qT=qTMin+(qTMax-qTMin)*iqT/(NqT-1);
+        	    double dN2=0.0; double dNPreEq2=0.0; double dNHydro2=0.0;
+        for(int i=0;i<NSamples;i++){
+            	    DileptonEstimator::SampledNd2qTdQdy_w_intial_e(Q,qT,TauMin,TauMax,yRap,dEdyd2b,dN2,dNPreEq2,dNHydro2,Ns,SaturationModel::aS,EtaOverS);
+		    dNlldQdY[iqT+NqT*iQ]+=dN2;
+		    dNlldQdYPreEq[iqT+NqT*iQ]+=dNPreEq2;
+		    dNlldQdYHydro[iqT+NqT*iQ]+=dNHydro2;
+		}
+	    }
+	}
+
+	for(int ib=0;ib<NQ*NqT;ib++){
+	        dNlldQdY[ib]/=double(NSamples);
+        	dNlldQdYPreEq[ib]/=double(NSamples);
+	        dNlldQdYHydro[ib]/=double(NSamples);
+	}
+
+
+	double sum[NQ];
+	for(int iQ=0;iQ<NQ;iQ++){
+		double Q=QMin+(QMax-QMin)*iQ/(NQ-1);
+		sum[iQ]=0;
+
+		for(int iqT=0;iqT<NqT;iqT++){
+                    double qT=qTMin+(qTMax-qTMin)*iqT/(NqT-1);
+      	            std::cout << Q << " " << qT << " " << dNlldQdY[iqT+NqT*iQ] << " " << dNlldQdYPreEq[iqT+NqT*iQ] << " " << dNlldQdYHydro[iqT+NqT*iQ] << std::endl;
+      	            OutStream << Q << " " << qT << " " << dNlldQdY[iqT+NqT*iQ] << " " << dNlldQdYPreEq[iqT+NqT*iQ] << " " << dNlldQdYHydro[iqT+NqT*iQ] << std::endl;
+
+		    sum[iQ]+=dNlldQdY[iqT+NqT*iQ]*(qTMax-qTMin)/NqT;
+		}
+	}
+	for(int iQ=0;iQ<NQ;iQ++){
+		double Q=QMin+(QMax-QMin)*iQ/(NQ-1);
+      	            std::cout << "\n" << Q << " " << sum[iQ] << std::endl;
+		
+	}
+
+    }
+
+
     OutStream.close();
     
     //FINALIZE MPI
